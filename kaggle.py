@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """ This module provides a class for automatic creation of Kaggle
     submission file.
+    
+    
 
     Usage:
     # this creates a submission file 
@@ -17,7 +19,28 @@
     
     Requirements:
     - Pandas
+    - Numpy
     - Mechanize
+    
+    Two configuration files:
+    in user home directory: .kag_account:
+    
+    [Kaggle_Account_Info]
+    kag_username = hidden
+    kag_password = hidden
+    
+    in Kaggle project directory .kag_competition:
+    
+    [competition]
+    name=talking_data
+    login_url=https://www.kaggle.com/account/login
+    upload_url=https://www.kaggle.com/c/talkingdata-mobile-user-demographics/submissions/attach
+    submission_url=https://www.kaggle.com/c/talkingdata-mobile-user-demographics/submissions
+    sample_submission=data_ori/sample_submission.csv
+    
+    [settings]
+    maxtime=180
+    repeat=20
     
 Created on Tue Jul 12 11:59:32 2016
 
@@ -30,6 +53,8 @@ import time
 import cookielib
 
 from mechanize import Browser 
+from ConfigParser import SafeConfigParser
+
 import pandas as pd
 import numpy as np
   
@@ -46,56 +71,32 @@ class KaggleError(Exception):
 
 class KaggleResult(object):
 
-<<<<<<< HEAD
-    """ Class for creating and uploading Kaggle submission files.  """
-=======
     """ Class for creating and uploading Kaggle submission files. """
->>>>>>> 7f6ab59108da5803d72562df341e5301e430a60b
     
-    # Kaggle parameters
-    kag_name = "talking_data"
-    kag_login_url = "https://www.kaggle.com/account/login"
-    kag_upload_url = "https://www.kaggle.com/c/talkingdata-mobile-user-demographics/submissions/attach"
-    kag_submissions_url = 'https://www.kaggle.com/c/talkingdata-mobile-user-demographics/submissions'
-<<<<<<< HEAD
-=======
+    kag_account_config_file = os.path.join(os.path.expanduser("~"), '.kag_account')
+    kag_competition_info = os.path.join(os.getcwd(), '.kag_competition')
     
->>>>>>> 7f6ab59108da5803d72562df341e5301e430a60b
-    kag_username = ''
-    kag_password = ''
-    
-    # Max wait for response (s)
-    maxtime = 3*60
-    # Repeat every x s
-    repeat = 20
-    
-    # For validation
-    nrows = 112071
-    ncols = 13
-    hdlist = ['device_id', 'F23-', 'F24-26', 'F27-28', 'F29-32', 'F33-42', 
-              'F43+', 'M22-', 'M23-26', 'M27-28', 'M29-31', 'M32-38', 'M39+']
-    
-    def __init__(self, data=None, index=None, cv_score=-1, 
+    def __init__(self, data, index=None, cv_score=-1, 
                  description='', subdir = '', verbose=False):
         """ KaggleResult file used to create submission file and upload them
         to the Kaggle leaderboard
         
         Parameters:
         -----------
-        index: list / 1D numpy array
-            values of the index of each prediction row. Will be first column of
-            submission file
-        data: numpy array
+        data: numpy array or pandas dataframe
             numpy array containing the predictions
-        cv_score: float
+        index: list / 1D numpy array (optional, default None)
+            values of the index of each prediction row. Will be first column of
+            submission file. Can be included with data.
+        cv_score: float (optional, default-1)
             score achieved locally
-        description: string
+        description: string (optional, default '')
             description of this submission file. Will be used on the Kaggle and
             in a log file
-        subdir: string
+        subdir: string (optional, default '')
             the submission file will be create in this subdirectory of working
             directory. It will be created if it does not exist
-        verbose: bool
+        verbose: bool (optional, default False)
             If true, it will print progress reports on console
         
         Returns:
@@ -103,17 +104,35 @@ class KaggleResult(object):
             float with the leaderboard score. -1 is score could not be found.
         """ 
         
-        if isinstance(index, np.ndarray) and isinstance(data, np.ndarray):
-            self.data = pd.DataFrame(data, index = index).reset_index()
-            self.data.columns = self.hdlist
+        # Check for configuration files
+        if not os.path.isfile(self.kag_account_config_file):
+            raise KaggleError('Kaggle account info not found in {}' \
+                                .format(self.kag_account_config_file))
+                                
+        if not os.path.isfile(self.kag_competition_info):
+            raise KaggleError('Kaggle competition info not found in {}' \
+                                .format(self.kag_competition_info))
+                                
+        # Load configuration data
+        self.load_competition_config()
+        self.load_kaggle_account_config()
+            
+        
+        if isinstance(data, np.ndarray):
+            if isinstance(index, np.ndarray):
+                self.data = pd.DataFrame(data, index = index).reset_index()
+            else:
+                self.data = pd.DataFrame(data)
         elif isinstance(data, pd.DataFrame):
-            if len(data)==len(self.hdlist)-1:
+            if data.shape[1]==len(self.get_columns())-1:
                 self.data = data.reset_index()
             else:
                 self.data = data
-                
         else:
-            self.data = data
+            raise ValueError('data or index should be np.ndarray or pd.DataFrame')
+        
+        # Make sure columns are correct
+        self.data.columns = self.get_columns()
             
         now = datetime.datetime.now()
             
@@ -131,6 +150,38 @@ class KaggleResult(object):
         # Create submission file
         if data is not None:
             self.create_submission_file()
+    
+    def load_competition_config(self):
+        """ Loads Kaggle competition info from config file """
+        try:
+            parser = SafeConfigParser()
+            parser.read(self.kag_competition_info)
+            
+            self.kag_name = parser.get('competition', 'name')
+            self.kag_login_url = parser.get('competition', 'login_url')
+            self.kag_upload_url = parser.get('competition', 'upload_url')
+            self.kag_submissions_url = parser.get('competition', 'submission_url')
+            self.sample_submission = parser.get('competition', 'sample_submission')
+            
+            self.maxtime = parser.getint('settings', 'maxtime')
+            self.repeat = parser.getint('settings', 'repeat')
+        except:
+            raise KaggleError('Kaggle competition info could not be read from {}' \
+                                .format(self.kag_competition_info)) 
+        
+
+    def load_kaggle_account_config(self):
+        """ Loads Kaggle account info from config file """
+        try:
+            parser = SafeConfigParser()
+            parser.read(self.kag_account_config_file)
+            
+            self.kag_username = parser.get('Kaggle_Account_Info', 'kag_username')
+            self.kag_password = parser.get('Kaggle_Account_Info', 'kag_password')
+        except:
+            raise KaggleError('Kaggle account info could not be read from {}' \
+                                .format(self.kag_account_config_file))    
+        
 
     def create_submission_file(self):
         """ Create submission file and log file with description
@@ -195,6 +246,11 @@ class KaggleResult(object):
             a pandas DataFrame with all data
         """
         return pd.read_csv(self.get_file_path())
+        
+    def get_columns(self):
+        """ Get columns based on sample submission file """
+        
+        return pd.read_csv(self.sample_submission).columns
 
     def validate(self):
         """ Do a quick validation on structure of dataframe
@@ -207,17 +263,20 @@ class KaggleResult(object):
             tuple with first element is true when file is correct and second
                 element is error string
         """
+        
+        # Compare to sample submission file 
+        sample = pd.read_csv(self.sample_submission)
+        
         msg = None        
 
-        if self.data.shape != (self.nrows, self.ncols):
+        if self.data.shape != sample.shape:
             msg = 'data in correct shape {} vs {}'.format(self.data.shape, 
-                                                         (self.nrows, 
-                                                          self.ncols))
+                                                         sample.shape)
         
         if self.data.isnull().values.any():
             msg = 'data contains missing values'
             
-        if not np.all([self.data.columns, self.hdlist]):
+        if not np.all([self.data.columns, sample.columns]):
             msg = 'wrong columns headers'
         
         if msg:
