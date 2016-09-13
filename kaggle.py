@@ -139,7 +139,12 @@ class KaggleResult(object):
         self.sub_path = os.path.join(os.getcwd(),subdir)
         self.cv_score = cv_score
         self.lb_score = -1
-        self.description = description
+        
+        if isinstance(description, dict):
+            self.description = description
+        else:
+            self.description = {'description': description}
+            
         self.verbose = verbose
         self.timestamp = now
     
@@ -212,7 +217,11 @@ class KaggleResult(object):
         if self.description:
             logfile = self.get_file_name('log') 
             with open(os.path.join(self.sub_path, logfile),'w') as f:
-                f.write('Description: {}'.format(self.description))
+                
+                for (key, value) in self.description.iteritems():
+                    f.write('[{}]\n'.format(key))
+                    f.write('{}\n'.format(value))
+                    f.write('\n')
         
         return os.path.join(self.sub_path, sub_file)
     
