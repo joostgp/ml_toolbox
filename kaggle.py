@@ -362,7 +362,7 @@ class KaggleResult(object):
         br.add_file(open(subfilepath), 'application/octet-stream',
                     os.path.basename(subfilepath), name='SubmissionUpload')
                     
-        br['SubmissionDescription'] = self.description
+        br['SubmissionDescription'] = self.description['description']
         br.submit(nr=0)
         
         if self.verbose:
