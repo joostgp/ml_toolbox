@@ -60,7 +60,7 @@ class SourceDataSet:
             if self.datafiles.target in self.traindata.columns:
                 # From train set if column exists
                 self.target = self.traindata[self.datafiles.target]
-                self.data.drop(self.datafiles.target, 
+                self.traindata.drop(self.datafiles.target, 
                                axis=1, 
                                inplace=True)
             elif os.path.exists(os.path.join(self.base_path,
@@ -87,7 +87,7 @@ class SourceDataSet:
         if isinstance(self.testdata, pd.DataFrame):
             return self.testdata.columns
         else:
-            return pd.read_csv(self.full_path(self.datafiles.target), 
+            return pd.read_csv(self.full_path(self.datafiles.train), 
                                nrows=0).columns
         
     def get_ids(self, dataset='train'):
